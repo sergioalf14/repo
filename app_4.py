@@ -30,7 +30,7 @@ try:
     LOCAL_DATA_DIR = DATA_DIR_CANDIDATE
 except Exception as e:
     # PermissionError or other issues -> fallback to temp dir
-    st.warning("⚠️ /mount/data not writable — falling back to temporary directory.")
+    # st.warning("⚠️ /mount/data not writable — falling back to temporary directory.")
     LOCAL_DATA_DIR = tempfile.gettempdir()
 
 # Ensure final MASTER_LOG path is defined after LOCAL_DATA_DIR is final
