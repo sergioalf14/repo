@@ -170,7 +170,7 @@ def save_to_master_excel(row_dict):
     # Attempt GitHub push (best-effort) and return result
     success, msg = push_file_to_github(local_master, "master_log.xlsx")
     if success:
-        return (True, "")
+        return (True, None)
         #return (True, f"Master log written and uploaded. {msg}")
     else:
         # Return success with warning if local write succeeded but github failed
