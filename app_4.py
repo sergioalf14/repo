@@ -170,7 +170,8 @@ def save_to_master_excel(row_dict):
     # Attempt GitHub push (best-effort) and return result
     success, msg = push_file_to_github(local_master, "master_log.xlsx")
     if success:
-        return (True, f"Master log written and uploaded. {msg}")
+        return (True, "")
+        #return (True, f"Master log written and uploaded. {msg}")
     else:
         # Return success with warning if local write succeeded but github failed
         return (True, f"Master log written locally at {local_master}. GitHub push: {msg}")
@@ -436,13 +437,15 @@ if st.session_state.step == 9:
             if not filepath:
                 st.error("Failed to generate Word document.")
             else:
-                st.success(f"Word report generated: {filename}")
+                # st.success(f"Word report generated: {filename}")
                 # Show GitHub push result
                 gh_ok, gh_msg = push_result
                 if gh_ok:
-                    st.info(f"Uploaded to GitHub: {gh_msg}")
+                    pass
+                    # st.info(f"Uploaded to GitHub: {gh_msg}")
                 else:
-                    st.warning(f"GitHub upload: {gh_msg}")
+                    pass
+                    # st.warning(f"GitHub upload: {gh_msg}")
 
                 # Save to master log
                 save_result, save_msg = save_to_master_excel({
