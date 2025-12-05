@@ -446,55 +446,10 @@ if st.session_state.step == 3:
         st.button("Next", on_click=next_step, key="next_3")
 
 # ----------------------------
-# STEP 4 — Specific Divisional Objectives
+# STEP 4 — Activities & Results
 # ----------------------------
 if st.session_state.step == 4:
-    st.title("Step 4 — Specific Divisional Objectives")
-    spec_map = st.session_state.submission.get("Specific Objectives", {})
-
-    # iterate aggregate objectives (if absent, warn)
-    aggregate_objectives = st.session_state.submission.get("Aggregate Objectives", {})
-    if not aggregate_objectives:
-        st.warning("No aggregate objectives found. Please select aggregate objectives in Step 3.")
-    for g_idx, (g, agg_list) in enumerate(aggregate_objectives.items()):
-        st.subheader(f"Strategic Goal: {g}")
-        for a_idx, agg in enumerate(agg_list):
-            st.markdown(f"### Aggregate Objective: {agg}")
-            key_radio = f"radio_{g_idx}_{a_idx}_{agg}".replace(" ", "_")
-            prev_choice = "Yes" if (g, agg) in spec_map and spec_map.get((g, agg)) and spec_map.get((g, agg)) != ["None"] else "No"
-            # Provide radio with default based on previous data
-            choice = st.radio(
-                f"Add specific objectives for '{agg}'?",
-                ["No", "Yes"],
-                index=0 if prev_choice == "No" else 1,
-                key=key_radio
-            )
-
-            key_text = f"spec_{g_idx}_{a_idx}_{agg}".replace(" ", "_")
-            if choice == "Yes":
-                default_text = "\n".join(spec_map.get((g, agg), [])) if spec_map.get((g, agg)) and spec_map.get((g, agg)) != ["None"] else ""
-                entries = st.text_area(f"Enter specific objectives (one per line):", value=default_text, key=key_text)
-                specific_list = [x.strip() for x in entries.split("\n") if x.strip()]
-                if not specific_list:
-                    specific_list = ["None provided"]
-            else:
-                specific_list = ["None"]
-
-            spec_map[(g, agg)] = specific_list
-
-    st.session_state.submission["Specific Objectives"] = spec_map
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.button("Previous", on_click=prev_step, key="prev_4")
-    with col2:
-        st.button("Next", on_click=next_step, key="next_4")
-
-# ----------------------------
-# STEP 5 — Activities & Results
-# ----------------------------
-if st.session_state.step == 5:
-    st.title("Step 5 — Activities & Results")
+    st.title("Step 4 — Activities & Results")
 
     act_map = st.session_state.submission.get("Activities", {})
     new_map = {}
@@ -540,10 +495,10 @@ if st.session_state.step == 5:
         st.button("Next", on_click=next_step, key="next_5")
 
 # ----------------------------
-# STEP 6 — Metrics per Strategic Goal
+# STEP 5 — Metrics per Strategic Goal
 # ----------------------------
-if st.session_state.step == 6:
-    st.title("Step 6 — Metrics per Strategic Goal")
+if st.session_state.step == 5:
+    st.title("Step 5 — Metrics per Strategic Goal")
 
     old_metrics = st.session_state.submission.get("Goal Metrics", {})
     metrics = {}
@@ -577,10 +532,10 @@ if st.session_state.step == 6:
         st.button("Next", on_click=next_step, key="next_6")
 
 # ----------------------------
-# STEP 7 — Optional Objective/Result Metrics
+# STEP 6 — Optional Objective/Result Metrics
 # ----------------------------
-if st.session_state.step == 7:
-    st.title("Step 7 — Optional Objective/Result Metrics")
+if st.session_state.step == 6:
+    st.title("Step 6 — Optional Objective/Result Metrics")
     opt = st.radio("Would you like to report metrics for objectives/results?", ["No", "Yes"], key="opt_obj_res")
     obj_res_metrics = st.session_state.submission.get("Objective/Result Metrics", {})
 
@@ -608,10 +563,10 @@ if st.session_state.step == 7:
         st.button("Next", on_click=next_step, key="next_7")
 
 # ----------------------------
-# STEP 8 — Additional Information
+# STEP 7 — Additional Information
 # ----------------------------
-if st.session_state.step == 8:
-    st.title("Step 8 — Additional Information")
+if st.session_state.step == 7:
+    st.title("Step 7 — Additional Information")
 
     old = st.session_state.submission.get("Additional", {})
 
@@ -635,10 +590,10 @@ if st.session_state.step == 8:
         st.button("Next", on_click=next_step, key="next_8")
 
 # ----------------------------
-# STEP 9 — Annex Upload + Export
+# STEP 8 — Annex Upload + Export
 # ----------------------------
-if st.session_state.step == 9:
-    st.title("Step 9 — Upload Annexes & Export")
+if st.session_state.step == 8:
+    st.title("Step 8 — Upload Annexes & Export")
 
     # Show previously saved annexes (if any)
     if st.session_state.annex_saved_list:
@@ -687,7 +642,8 @@ if st.session_state.step == 9:
             if pr and pr != (None, None):
                 ok, msg = pr
                 if ok:
-                    st.info(f"Generated report push: {msg}")
+                    pass
+                    # st.info(f"Generated report push: {msg}")
                 else:
                     st.warning(f"Generated report push: {msg}")
         except FileNotFoundError:
