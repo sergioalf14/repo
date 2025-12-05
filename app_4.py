@@ -140,8 +140,9 @@ def prev_step():
     if st.session_state.step > 1:
         st.session_state.step -= 1
 
+
 # ------------------------------------------------
-# Save to master Excel (robust)
+# Save to master Excel (robust and append-only)
 # ------------------------------------------------
 def save_to_master_excel(row_dict):
     """
@@ -149,37 +150,54 @@ def save_to_master_excel(row_dict):
     Also attempts to push to GitHub (master_log.xlsx at repo root).
     Returns (success: bool, message: str)
     """
-    local_master = MASTER_LOG
-    try:
-        df_new = pd.DataFrame([row_dict])
-        if os.path.exists(local_master):
-            try:
-                df_old = pd.read_excel(local_master)
-            except Exception:
-                df_old = pd.DataFrame()
-            df_final = pd.concat([df_old, df_new], ignore_index=True)
-        else:
-            df_final = df_new
 
-        # Try saving to MASTER_LOG
+    local_master = MASTER_LOG
+
+    # ------------------------------------------------
+    # 1. Always build the full DataFrame BEFORE writing
+    # ------------------------------------------------
+    df_new = pd.DataFrame([row_dict])  # new row must be list of dict
+
+    if os.path.exists(local_master):
+        try:
+            df_old = pd.read_excel(local_master)
+        except Exception:
+            df_old = pd.DataFrame()
+    else:
+        df_old = pd.DataFrame()
+
+    # Append new entry
+    df_final = pd.concat([df_old, df_new], ignore_index=True)
+
+    # ------------------------------------------------
+    # 2. Try writing to the actual location
+    # ------------------------------------------------
+    try:
         df_final.to_excel(local_master, index=False)
+
     except PermissionError:
-        # Fallback to temp dir
+        # ------------------------------------------------
+        # 3. Permission error → save to temp directory fallback
+        # ------------------------------------------------
         fallback = os.path.join(tempfile.gettempdir(), "master_log.xlsx")
         try:
             df_final.to_excel(fallback, index=False)
             local_master = fallback
         except Exception as e:
             return (False, f"Failed to write master log even to fallback: {e}")
+
     except Exception as e:
         return (False, f"Failed to write master log: {e}")
 
-    # Attempt GitHub push (best-effort) and return result
+    # ------------------------------------------------
+    # 4. Push to GitHub (if enabled)
+    # ------------------------------------------------
     success, msg = push_file_to_github(local_master, "master_log.xlsx")
+
     if success:
         return (True, "")
     else:
-        # Return success with warning if local write succeeded but github failed
+        # Local write succeeded, GitHub failed → still OK
         return (True, f"Master log written locally at {local_master}. GitHub push: {msg}")
 
 # ------------------------------------------------
