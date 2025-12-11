@@ -750,64 +750,84 @@ if st.session_state.step == 7:
 if st.session_state.step == 8:
     st.title("Step 8 — Upload Annexes & Export")
 
-    # Show previously saved annexes
-    if st.session_state.annex_saved_list:
-        st.write("Previously uploaded annexes (saved):")
-        for orig_name, saved_path in st.session_state.annex_saved_list:
-            st.write(f"- {orig_name} (saved at {saved_path})")
+    # Ensure the annex list exists
+    if "annex_saved_list" not in st.session_state:
+        st.session_state.annex_saved_list = []
 
-    # Upload and immediately save annexes
-    uploaded = st.file_uploader(
-        "Upload annex files (multiple)",
+    # -------------------------------------------------------
+    # Show previously saved annexes
+    --------------------------------------------------------
+    if st.session_state.annex_saved_list:
+        st.subheader("Previously uploaded annexes")
+        for orig_name, saved_path in st.session_state.annex_saved_list:
+            st.write(f"- **{orig_name}** (saved at `{saved_path}`)")
+
+    # -------------------------------------------------------
+    # Upload annexes WITHOUT saving duplicates
+    # -------------------------------------------------------
+    uploaded_files = st.file_uploader(
+        "Upload annex files (you can select multiple)",
         accept_multiple_files=True,
         key="annex_uploader"
     )
-    if uploaded:
-        saved_info = save_annexes_immediate(uploaded)
-        for orig_name, saved_path, ok, msg in saved_info:
-            if ok:
-                st.success(f"Saved annex: {orig_name}")
-            else:
-                st.error(f"Failed to save annex {orig_name}: {msg}")
 
-    # Store BOTH name + path in the submission object
+    if uploaded_files:
+        # Identify files never saved before
+        already_saved = {orig for (orig, _) in st.session_state.annex_saved_list}
+        new_files = [f for f in uploaded_files if f.name not in already_saved]
+
+        if new_files:
+            saved_info = save_annexes_immediate(new_files)
+            for orig_name, saved_path, ok, msg in saved_info:
+                if ok:
+                    st.success(f"Saved annex: {orig_name}")
+                else:
+                    st.error(f"Failed to save annex {orig_name}: {msg}")
+
+    # Save full annex data into the submission object
     st.session_state.submission["Annexes_Saved"] = [
         {"original_name": orig, "saved_path": path}
         for (orig, path) in st.session_state.annex_saved_list
     ]
 
+    # -------------------------------------------------------
+    # Navigation buttons
+    # -------------------------------------------------------
     col1, col2 = st.columns(2)
     with col1:
-        st.button("Previous", on_click=prev_step, key="prev_9")
+        st.button("Previous", on_click=prev_step, key="prev_8")
     with col2:
-        st.button("Finish and Generate Report", on_click=finish_and_save, key="finish")
+        st.button("Finish and Generate Report", on_click=finish_and_save, key="finish_8")
 
     # -------------------------------------------------------
-    # If report was generated, show timestamp + download
+    # If report was generated, show download section
     # -------------------------------------------------------
-    if st.session_state.get("last_file"):
+    last_file = st.session_state.get("last_file")
+
+    if last_file:
         try:
-            # 1. Timestamp message
+            # Timestamp
             timestamp = st.session_state.get(
                 "generated_timestamp",
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
-            st.success(f"Word report generated on {timestamp}")
+            st.success(f"Word report generated on **{timestamp}**.")
 
-            # 2. Additional finish message (optional)
-            if st.session_state.get("finish_msg"):
-                st.info(st.session_state.finish_msg)
+            # Optional message
+            finish_msg = st.session_state.get("finish_msg")
+            if finish_msg:
+                st.info(finish_msg)
 
-            # 3. Download button
-            last_path = st.session_state.last_file
-            with open(last_path, "rb") as f:
+            # Download button
+            with open(last_file, "rb") as f:
                 st.download_button(
-                    label="Download Word Report",
+                    label="📄 Download Word Report",
                     data=f.read(),
-                    file_name=os.path.basename(last_path),
+                    file_name=os.path.basename(last_file),
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     key="download_workplan"
                 )
+
         except Exception as e:
             st.error(f"Error preparing download: {e}")
 
