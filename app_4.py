@@ -811,9 +811,9 @@ if st.session_state.step == 8:
     if "annex_saved_list" not in st.session_state:
         st.session_state.annex_saved_list = []
     
-    # Track which files have been processed to avoid duplicates on rerun
-    if "processed_annex_files" not in st.session_state:
-        st.session_state.processed_annex_files = set()
+    # Track the last uploader state to detect changes
+    if "last_uploader_state" not in st.session_state:
+        st.session_state.last_uploader_state = []
 
     # -------------------------------------------------------
     # Show previously saved annexes
@@ -827,33 +827,58 @@ if st.session_state.step == 8:
                 st.write(f"- **{orig_name}** (saved at `{saved_path}`)")
 
     # -------------------------------------------------------
-    # Upload annexes WITHOUT saving duplicates
+    # Callback function to process files ONLY when uploader changes
+    # -------------------------------------------------------
+    def process_uploaded_files():
+        """Called only when file_uploader widget changes"""
+        uploaded_files = st.session_state.annex_uploader
+        
+        if not uploaded_files:
+            return
+        
+        # Get current file identifiers
+        current_files = [(f.name, f.size) for f in uploaded_files]
+        
+        # Check if this is actually a NEW upload (not just a rerun)
+        if current_files == st.session_state.last_uploader_state:
+            return  # Same files, skip processing
+        
+        # Update the state
+        st.session_state.last_uploader_state = current_files
+        
+        # Find truly new files
+        already_saved = {orig for (orig, *_) in st.session_state.annex_saved_list}
+        new_files = [f for f in uploaded_files if f.name not in already_saved]
+
+        if new_files:
+            saved_info = save_annexes_immediate(new_files)
+            # Store messages to display after rerun
+            st.session_state.upload_messages = []
+            for orig_name, saved_path, ok, msg in saved_info:
+                if ok:
+                    st.session_state.upload_messages.append(("success", f"Saved annex: {orig_name}"))
+                else:
+                    st.session_state.upload_messages.append(("error", f"Failed to save annex {orig_name}: {msg}"))
+
+    # -------------------------------------------------------
+    # Upload annexes with on_change callback
     # -------------------------------------------------------
     uploaded_files = st.file_uploader(
         "Upload annex files (you can select multiple)",
         accept_multiple_files=True,
-        key="annex_uploader"
+        key="annex_uploader",
+        on_change=process_uploaded_files  # Process ONLY when uploader changes
     )
-
-    if uploaded_files:
-        # Create a unique identifier for each uploaded file (name + size)
-        current_files = {(f.name, f.size) for f in uploaded_files}
-        
-        # Find truly new files that haven't been processed yet
-        new_files = []
-        for f in uploaded_files:
-            file_id = (f.name, f.size)
-            if file_id not in st.session_state.processed_annex_files:
-                new_files.append(f)
-                st.session_state.processed_annex_files.add(file_id)
-
-        if new_files:
-            saved_info = save_annexes_immediate(new_files)
-            for orig_name, saved_path, ok, msg in saved_info:
-                if ok:
-                    st.success(f"Saved annex: {orig_name}")
-                else:
-                    st.error(f"Failed to save annex {orig_name}: {msg}")
+    
+    # Display any upload messages from the callback
+    if "upload_messages" in st.session_state:
+        for msg_type, msg in st.session_state.upload_messages:
+            if msg_type == "success":
+                st.success(msg)
+            else:
+                st.error(msg)
+        # Clear messages after displaying
+        del st.session_state.upload_messages
 
     # Save full annex data into the submission object
     annex_items = []
@@ -881,19 +906,16 @@ if st.session_state.step == 8:
 
     if last_file:
         try:
-            # Timestamp
             timestamp = st.session_state.get(
                 "generated_timestamp",
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
             st.success(f"Word report generated on **{timestamp}**.")
 
-            # Optional message
             finish_msg = st.session_state.get("finish_msg")
             if finish_msg:
                 st.info(finish_msg)
 
-            # Download button
             with open(last_file, "rb") as f:
                 st.download_button(
                     label="📄 Download Word Report",
