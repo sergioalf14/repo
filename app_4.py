@@ -807,75 +807,81 @@ if st.session_state.step == 7:
 if st.session_state.step == 8:
     st.title("Step 8 — Upload Annexes & Export")
 
-    # 1. Initialize lists if they don't exist
+    # Initialize annex tracking like app_local.py
+    if "annexes_saved" not in st.session_state:
+        st.session_state.annexes_saved = False
     if "annex_saved_list" not in st.session_state:
         st.session_state.annex_saved_list = []
 
-    # -------------------------------------------------------
-    # 2. Display previously saved annexes (Read-Only View)
-    # -------------------------------------------------------
-    if st.session_state.annex_saved_list:
-        st.subheader("✅ Attached Annexes")
-        # Clean list display
-        for item in st.session_state.annex_saved_list:
-            # item is tuple: (original_name, saved_path, hash, gh_path)
-            if isinstance(item, (list, tuple)) and len(item) >= 2:
-                st.text(f"• {item[0]}")
-    else:
-        st.info("No annexes uploaded yet.")
-
-    st.write("---")
-
-    # -------------------------------------------------------
-    # 3. Simplified Callback
-    # -------------------------------------------------------
-    def on_upload_change():
-        """
-        Triggered ONLY when the user adds/removes a file.
-        We pass the whole list to the saver. The saver is smart enough 
-        to ignore files that are already saved (by hash/name).
-        """
-        files = st.session_state.annex_uploader
-        if files:
-            # This function (defined in your script) handles deduplication
-            save_annexes_immediate(files)
-
-    # -------------------------------------------------------
-    # 4. The Uploader Widget
-    # -------------------------------------------------------
-    st.file_uploader(
-        "Upload new annexes",
+    uploaded_files = st.file_uploader(
+        "Upload annex files (PDF, Word, Excel, images, etc.)",
         accept_multiple_files=True,
-        key="annex_uploader",
-        on_change=on_upload_change,  # <--- The magic fix: only runs on interaction
-        help="Files are saved automatically upon selection."
+        key="annex_uploads"
     )
 
+    os.makedirs(ANNEX_DIR, exist_ok=True)
+    saved_files = []
+
+    # -------------------------------------------------------------
+    # SAVE ONLY ONCE — identical logic to app_local.py
+    # -------------------------------------------------------------
+    if uploaded_files and not st.session_state.annexes_saved:
+
+        for file in uploaded_files:
+
+            # deterministic saved filename: timestamp + original filename
+            new_name = datetime.now().strftime("%Y%m%d_%H%M%S_") + file.name
+            save_path = os.path.join(ANNEX_DIR, new_name)
+
+            with open(save_path, "wb") as f:
+                f.write(file.getbuffer())
+
+            # Save metadata for later use in export
+            saved_files.append({
+                "original_name": file.name,
+                "saved_name": new_name,
+                "path": save_path
+            })
+
+            # PUSH ONLY ONCE TO GITHUB
+            if USE_GITHUB and GITHUB_TOKEN:
+                gh_path = f"annexes/{new_name}"
+                push_file_to_github(save_path, gh_path)
+
+        st.session_state.annex_saved_list = saved_files
+        st.session_state.submission["Annexes_Saved"] = saved_files
+        st.session_state.annexes_saved = True  # <--- prevents duplicates
+
+        st.success(f"Saved {len(saved_files)} annex(es).")
+
+    elif st.session_state.annexes_saved:
+        st.info("Annexes already saved. Upload again to replace them.")
+
     # -------------------------------------------------------
-    # 5. Navigation & Finish
+    # Show list of annexes already saved
     # -------------------------------------------------------
+    if st.session_state.annex_saved_list:
+        st.subheader("Attached Annexes:")
+        for a in st.session_state.annex_saved_list:
+            st.write(f"• {a['original_name']}")
+
     st.write("---")
+
+    # Navigation & Finish
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.button("Previous", on_click=prev_step, key="prev_8")
-    
+
     with col2:
-        # Finish button triggers the docx generation
         st.button("Finish & Generate Report", on_click=finish_and_save, key="finish_8")
 
     # -------------------------------------------------------
-    # 6. Success/Download Section (Shows after "Finish" is clicked)
+    # Download generated report
     # -------------------------------------------------------
     if st.session_state.last_file:
-        st.divider()
         st.success("✔ Workplan generated successfully!")
-        
-        # Display feedback message (e.g., GitHub push status)
-        if st.session_state.get("finish_msg"):
-            st.info(st.session_state.finish_msg)
-        
-        # Download Button
+
         try:
             with open(st.session_state.last_file, "rb") as f:
                 st.download_button(
@@ -887,3 +893,4 @@ if st.session_state.step == 8:
                 )
         except Exception as e:
             st.error(f"File generated but download failed: {e}")
+
