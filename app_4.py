@@ -363,16 +363,23 @@ def save_annexes_immediate(uploaded_files):
 # ------------------------------------------------
 def finish_and_save():
     try:
-        # Save annexes already handled on upload; here we just ensure annex list is in submission
-        st.session_state.submission["Annexes_Saved"] = [p for (_, p) in st.session_state.annex_saved_list]
+        # Ensure annexes stored
+        st.session_state.submission["Annexes_Saved"] = [
+            p for (_, p) in st.session_state.annex_saved_list
+        ]
 
+        # Generate the Word report
         filepath, filename, push_result = export_word(st.session_state.submission)
+
         if not filepath:
             st.session_state.last_file = None
             st.session_state.finish_msg = f"Failed to generate Word doc: {push_result}"
             return
 
-        # Save to master log (best-effort)
+        # IMPORTANT: store timestamp for Step 8
+        st.session_state.generated_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Save to master log
         save_ok, save_msg = save_to_master_excel({
             "timestamp": datetime.now(),
             "division": st.session_state.submission.get("Cover", {}).get("Division", ""),
@@ -380,23 +387,22 @@ def finish_and_save():
             "data": str(st.session_state.submission)
         })
 
+        # Store the generated file path
         st.session_state.last_file = filepath
-        st.session_state.finish_msg = ""
-        if save_ok and save_msg:
-            # success with message
-            st.session_state.finish_msg = save_msg
-        elif not save_ok:
-            st.session_state.finish_msg = save_msg
-        else:
-            # save_ok True and no msg -> good
-            st.session_state.finish_msg = ""
 
-        # store push_result as well
+        # Determine finish message
+        if save_ok:
+            st.session_state.finish_msg = save_msg or "Report generated successfully."
+        else:
+            st.session_state.finish_msg = save_msg or "Report generated, but master log save failed."
+
+        # Store push result
         st.session_state.last_push_result = push_result
 
     except Exception as e:
         st.session_state.last_file = None
         st.session_state.finish_msg = f"Unexpected error: {e}\n{traceback.format_exc()}"
+
 
 # ------------------------------------------------
 # APP: Steps 1–9 (UI) — FULL PERSISTENCE (Option A)
