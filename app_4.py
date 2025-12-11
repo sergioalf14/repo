@@ -740,13 +740,23 @@ if st.session_state.step == 8:
     with col2:
         st.button("Finish and Generate Report", on_click=finish_and_save, key="finish")
 
-    # If report was generated, show download button
+    # -------------------------------------------------------
+    # If report was generated, show timestamp + download
+    # -------------------------------------------------------
     if st.session_state.get("last_file"):
         try:
-            st.success("Word report generated.")
-            if st.session_state.get("finish_msg"):
-                st.info(st.session_state.get("finish_msg"))
+            # 1. Timestamp message
+            timestamp = st.session_state.get(
+                "generated_timestamp",
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            )
+            st.success(f"Word report generated on {timestamp}")
 
+            # 2. Additional finish message (optional)
+            if st.session_state.get("finish_msg"):
+                st.info(st.session_state.finish_msg)
+
+            # 3. Download button
             last_path = st.session_state.last_file
             with open(last_path, "rb") as f:
                 st.download_button(
@@ -758,3 +768,5 @@ if st.session_state.step == 8:
                 )
         except Exception as e:
             st.error(f"Error preparing download: {e}")
+
+
