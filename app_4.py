@@ -391,11 +391,16 @@ def save_annexes_immediate(uploaded_files):
 
     saved_results = []
 
-    # build quick lookup of existing original names (optional)
-    existing_names = {orig for (orig, *_ ) in st.session_state.annex_saved_list}
+    # Build lookup of existing original names to prevent filename duplicates
+    existing_names = {orig for (orig, *_) in st.session_state.annex_saved_list}
 
     for f in uploaded_files:
         try:
+            # Skip if this exact filename was already saved
+            if f.name in existing_names:
+                saved_results.append((f.name, None, True, "Already saved — skipped"))
+                continue
+
             # read bytes once
             b = f.getbuffer().tobytes() if hasattr(f, "getbuffer") else f.read()
 
@@ -407,15 +412,9 @@ def save_annexes_immediate(uploaded_files):
                 saved_results.append((f.name, None, True, "Already saved (identical content) — skipped"))
                 continue
 
-            # Optional: if same filename already exists in session, avoid repeated filename collision
+            # Use original filename
             safe_name = f.name
             out_path = os.path.join(ANNEX_DIR, safe_name)
-
-            # If identical filename exists on disk but different content, append short hash to filename
-            if os.path.exists(out_path):
-                # if file with that name exists on disk, avoid overwriting: add short hash suffix
-                base, ext = os.path.splitext(safe_name)
-                out_path = os.path.join(ANNEX_DIR, f"{base}_{content_hash[:8]}{ext}")
 
             # ensure directory exists
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -424,24 +423,24 @@ def save_annexes_immediate(uploaded_files):
             with open(out_path, "wb") as out:
                 out.write(b)
 
-            # push to GitHub only if repo enabled and token available; but do it once per saved file
+            # push to GitHub only once
             gh_msg = ""
             gh_path = f"annexes/{os.path.basename(out_path)}"
-            try:
-                # Only attempt GH push if we haven't pushed the same gh_path yet
-                if USE_GITHUB and (gh_path not in st.session_state.annex_saved_gh_paths):
+            
+            if USE_GITHUB and GITHUB_TOKEN and (gh_path not in st.session_state.annex_saved_gh_paths):
+                try:
                     success, push_msg = push_file_to_github(out_path, gh_path)
                     if success:
                         gh_msg = f"Pushed to GitHub: {gh_path}"
                         st.session_state.annex_saved_gh_paths.add(gh_path)
                     else:
                         gh_msg = f"Saved locally; GitHub push: {push_msg}"
-                else:
-                    gh_msg = "Saved locally (GH push skipped or already done)."
-            except Exception as e:
-                gh_msg = f"Saved locally; GitHub push error: {e}"
+                except Exception as e:
+                    gh_msg = f"Saved locally; GitHub push error: {e}"
+            else:
+                gh_msg = "Saved locally (GH push skipped or already done)."
 
-            # record in session_state:
+            # record in session_state
             st.session_state.annex_saved_list.append((f.name, out_path, content_hash, gh_path))
             st.session_state.annex_saved_hashes.add(content_hash)
 
@@ -451,7 +450,6 @@ def save_annexes_immediate(uploaded_files):
             saved_results.append((f.name, None, False, f"Failed to save: {e}"))
 
     return saved_results
-
 
 # ------------------------------------------------
 # Finish callback: export docx + save master log + store filename for download
