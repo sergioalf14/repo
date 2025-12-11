@@ -308,17 +308,25 @@ def export_word(data):
 
     # 7. Annexes
     add_heading(doc, "7. Annexes")
-    annex_paths = data.get("Annexes_Saved", [])
-    annex_names = [os.path.basename(p) for p in annex_paths]
-    add_bullet_list(doc, annex_names)
 
-    # Save and push to GitHub (keeps your original behaviour)
-    filename = f"workplan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-    filepath = os.path.join(LOCAL_DATA_DIR, filename)
-    doc.save(filepath)
+    annex_items = data.get("Annexes_Saved", [])
 
-    success, msg = push_file_to_github(filepath, f"generated_reports/{filename}")
-    return (filepath, filename, (success, msg))
+    # Works whether each item is a dict or a path string
+    safe_names = []
+    for item in annex_items:
+        if isinstance(item, dict) and "original_name" in item:
+            safe_names.append(item["original_name"])
+        elif isinstance(item, str):
+            safe_names.append(os.path.basename(item))
+        else:
+            safe_names.append(str(item))
+
+    if safe_names:
+        add_bullet_list(doc, safe_names)
+    else:
+        add_paragraph(doc, "No annexes uploaded.")
+
+    
 
 
 # ------------------------------------------------
@@ -700,43 +708,53 @@ if st.session_state.step == 7:
 if st.session_state.step == 8:
     st.title("Step 8 — Upload Annexes & Export")
 
-    if "annexes_saved" not in st.session_state:
-        st.session_state.annexes_saved = False
+    # Show previously saved annexes
+    if st.session_state.annex_saved_list:
+        st.write("Previously uploaded annexes (saved):")
+        for orig_name, saved_path in st.session_state.annex_saved_list:
+            st.write(f"- {orig_name} (saved at {saved_path})")
 
-    uploaded = st.file_uploader("Upload annex files", accept_multiple_files=True)
+    # Upload and immediately save annexes
+    uploaded = st.file_uploader(
+        "Upload annex files (multiple)",
+        accept_multiple_files=True,
+        key="annex_uploader"
+    )
+    if uploaded:
+        saved_info = save_annexes_immediate(uploaded)
+        for orig_name, saved_path, ok, msg in saved_info:
+            if ok:
+                st.success(f"Saved annex: {orig_name}")
+            else:
+                st.error(f"Failed to save annex {orig_name}: {msg}")
 
-    saved_files = []
-
-    if uploaded and not st.session_state.annexes_saved:
-        for f in uploaded:
-            new_name = datetime.now().strftime("%Y%m%d_%H%M%S_") + f.name
-            out_path = os.path.join(ANNEX_DIR, new_name)
-            with open(out_path, "wb") as out:
-                out.write(f.getbuffer())
-
-            saved_files.append(out_path)
-
-            # keep GitHub functionality
-            push_file_to_github(out_path, f"annexes/{new_name}")
-
-        st.session_state.submission["Annexes_Saved"] = saved_files
-        st.session_state.annexes_saved = True
-        st.success(f"Saved {len(saved_files)} annex(es).")
-
-    elif st.session_state.annexes_saved:
-        st.info("Annexes already saved. Upload again to replace.")
+    # Store BOTH name + path in the submission object
+    st.session_state.submission["Annexes_Saved"] = [
+        {"original_name": orig, "saved_path": path}
+        for (orig, path) in st.session_state.annex_saved_list
+    ]
 
     col1, col2 = st.columns(2)
     with col1:
-        st.button("Previous", on_click=prev_step)
+        st.button("Previous", on_click=prev_step, key="prev_9")
     with col2:
-        st.button("Finish and Generate Report", on_click=finish_and_save)
+        st.button("Finish and Generate Report", on_click=finish_and_save, key="finish")
 
+    # If report was generated, show download button
     if st.session_state.get("last_file"):
-        with open(st.session_state.last_file, "rb") as f:
-            st.download_button(
-                label="Download Word Report",
-                data=f.read(),
-                file_name=os.path.basename(st.session_state.last_file)
-            )
+        try:
+            st.success("Word report generated.")
+            if st.session_state.get("finish_msg"):
+                st.info(st.session_state.get("finish_msg"))
 
+            last_path = st.session_state.last_file
+            with open(last_path, "rb") as f:
+                st.download_button(
+                    label="Download Word Report",
+                    data=f.read(),
+                    file_name=os.path.basename(last_path),
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    key="download_workplan"
+                )
+        except Exception as e:
+            st.error(f"Error preparing download: {e}")
