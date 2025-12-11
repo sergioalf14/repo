@@ -203,42 +203,123 @@ def save_to_master_excel(row_dict):
 # ------------------------------------------------
 # Export Word (generate + push + return filepath)
 # ------------------------------------------------
-def export_word(summary_dict):
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+def add_heading(doc, text, level=1):
+    p = doc.add_heading(text, level=level)
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    return p
+
+def add_paragraph(doc, text, bold=False, indent=False):
+    p = doc.add_paragraph()
+    run = p.add_run(text)
+    run.bold = bold
+    p.paragraph_format.space_after = Pt(6)
+    if indent:
+        p.paragraph_format.left_indent = Pt(24)
+    return p
+
+def add_bullet_list(doc, items):
+    for x in items:
+        if x:
+            p = doc.add_paragraph(x, style="List Bullet")
+            p.paragraph_format.space_after = Pt(3)
+
+def add_table_from_dict(doc, d):
+    table = doc.add_table(rows=0, cols=2)
+    table.style = "Table Grid"
+    for key, value in d.items():
+        row = table.add_row().cells
+        row[0].text = key
+        row[1].text = value if value else ""
+    doc.add_paragraph("")  # spacing
+
+def export_word(data):
     """
-    Creates a Word document (docx), saves it to LOCAL_DATA_DIR (or fallback),
-    uploads to GitHub under generated_reports/, and returns (filepath, filename, push_result).
+    Creates a fully formatted WTO-style Word document
+    AND preserves GitHub upload behaviour from app_4.py.
     """
     doc = Document()
-    doc.add_heading("Divisional Workplan Summary", level=1)
 
-    for section, content in summary_dict.items():
-        doc.add_heading(section, level=2)
-        if isinstance(content, dict):
-            for k, v in content.items():
-                doc.add_paragraph(f"{k}: {v}")
-        elif isinstance(content, list):
-            for item in content:
-                doc.add_paragraph(f"- {item}")
+    # TITLE PAGE
+    add_heading(doc, "Divisional Workplan Summary", level=1)
+    cover = data.get("Cover", {})
+    for k in ["Division", "Director", "Date", "Version", "FTEs", "Financial Resources", "Director Signature"]:
+        add_paragraph(doc, f"{k}: {cover.get(k, '')}")
+
+    doc.add_page_break()
+
+    # 1. Strategic Goals
+    add_heading(doc, "1. Strategic Goals")
+    add_bullet_list(doc, data.get("Selected Goals", []))
+
+    # 2. Aggregate Objectives
+    add_heading(doc, "2. Aggregate Divisional Objectives")
+    for goal, objs in data.get("Aggregate Objectives", {}).items():
+        add_heading(doc, f"{goal}", level=2)
+        add_bullet_list(doc, objs)
+
+    # 3. Activities & Expected Results
+    add_heading(doc, "3. Activities and Expected Results")
+    for (goal, agg), content in data.get("Activities", {}).items():
+        add_heading(doc, f"{goal} — {agg}", level=2)
+
+        if content.get("activities"):
+            add_paragraph(doc, "Activities:", bold=True)
+            add_bullet_list(doc, content["activities"])
+
+        if content.get("results"):
+            add_paragraph(doc, "Expected Results:", bold=True)
+            add_bullet_list(doc, content["results"])
+
+    # 4. Goal Metrics
+    add_heading(doc, "4. Metrics for Strategic Goals")
+    for goal, m in data.get("Goal Metrics", {}).items():
+        add_heading(doc, goal, level=2)
+        add_table_from_dict(doc, {
+            "FTEs": m.get("FTEs", ""),
+            "Financial Resources": m.get("Financial Resources", ""),
+            "KPIs": m.get("KPIs", ""),
+            "Other Metrics": m.get("Other Metrics", "")
+        })
+
+    # 5. Objective/Result Metrics
+    add_heading(doc, "5. Metrics for Objectives and Results")
+    for (goal, agg, tag), m in data.get("Objective/Result Metrics", {}).items():
+        if tag == "AGGREGATE":
+            title = f"{goal} — {agg}"
         else:
-            doc.add_paragraph(str(content))
+            title = f"Expected Result: {tag[4:]}"
+        add_heading(doc, title, level=2)
 
+        add_table_from_dict(doc, {
+            "FTEs": m.get("FTEs", ""),
+            "Financial Resources": m.get("Financial Resources", ""),
+            "KPIs": m.get("KPIs", ""),
+            "Other Metrics": m.get("Other Metrics", "")
+        })
+
+    # 6. Additional Information
+    add_heading(doc, "6. Additional Information")
+    for k, v in data.get("Additional", {}).items():
+        add_paragraph(doc, k + ":", bold=True)
+        add_paragraph(doc, v if v else "—", indent=True)
+
+    # 7. Annexes
+    add_heading(doc, "7. Annexes")
+    annex_paths = data.get("Annexes_Saved", [])
+    annex_names = [os.path.basename(p) for p in annex_paths]
+    add_bullet_list(doc, annex_names)
+
+    # Save and push to GitHub (keeps your original behaviour)
     filename = f"workplan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
     filepath = os.path.join(LOCAL_DATA_DIR, filename)
+    doc.save(filepath)
 
-    try:
-        doc.save(filepath)
-    except PermissionError:
-        # fallback to temp dir
-        filepath = os.path.join(tempfile.gettempdir(), filename)
-        try:
-            doc.save(filepath)
-        except Exception as e:
-            return (None, None, (False, f"Failed to save docx: {e}"))
-
-    # Attempt to push to GitHub; best-effort
-    gh_path = f"generated_reports/{filename}"
-    success, msg = push_file_to_github(filepath, gh_path)
+    success, msg = push_file_to_github(filepath, f"generated_reports/{filename}")
     return (filepath, filename, (success, msg))
+
 
 # ------------------------------------------------
 # Save annexes immediately and persist their saved paths
@@ -535,32 +616,56 @@ if st.session_state.step == 5:
 # STEP 6 — Optional Objective/Result Metrics
 # ----------------------------
 if st.session_state.step == 6:
-    st.title("Step 6 — Optional Objective/Result Metrics")
-    opt = st.radio("Would you like to report metrics for objectives/results?", ["No", "Yes"], key="opt_obj_res")
-    obj_res_metrics = st.session_state.submission.get("Objective/Result Metrics", {})
+    st.title("Step 6 — Objective & Result Metrics (Optional)")
+
+    opt = st.radio("Would you like to report metrics for objectives/results?",
+                   ["No", "Yes"], key="opt_obj_res")
+
+    obj_res_metrics = {}
 
     if opt == "Yes":
-        # The original code used Specific Objectives to populate items. We'll use that mapping.
-        spec_map = st.session_state.submission.get("Specific Objectives", {})
-        # Loop over spec_map and for each item provide inputs with defaults from obj_res_metrics
-        for idx, ((g, agg), spec_list) in enumerate(spec_map.items()):
+        activities_map = st.session_state.submission.get("Activities", {})
+
+        for (g, agg), data in activities_map.items():
             st.subheader(f"Aggregate Objective: {agg}")
-            for s_idx, item in enumerate(spec_list):
-                st.markdown(f"### Item: {item}")
-                prev_vals = obj_res_metrics.get((g, agg, item), {})
-                fte = st.text_input(f"FTEs for '{item}'", value=prev_vals.get("FTEs", ""), key=f"obj_fte_{idx}_{s_idx}")
-                fin = st.text_input(f"Financial Resources for '{item}'", value=prev_vals.get("Financial Resources", ""), key=f"obj_fin_{idx}_{s_idx}")
-                kpi = st.text_area(f"KPIs for '{item}'", value=prev_vals.get("KPIs", ""), key=f"obj_kpi_{idx}_{s_idx}")
-                other = st.text_area(f"Other Metrics for '{item}'", value=prev_vals.get("Other Metrics", ""), key=f"obj_other_{idx}_{s_idx}")
-                obj_res_metrics[(g, agg, item)] = {"FTEs": fte, "Financial Resources": fin, "KPIs": kpi, "Other Metrics": other}
+
+            # Metrics for the aggregate objective
+            fte_agg = st.text_input(f"FTEs — Aggregate Objective '{agg}'", key=f"fte_agg_{g}_{agg}")
+            fin_agg = st.text_input(f"Financial Resources — Aggregate Objective '{agg}'", key=f"fin_agg_{g}_{agg}")
+            kpi_agg = st.text_area(f"KPIs — Aggregate Objective '{agg}'", key=f"kpi_agg_{g}_{agg}")
+            other_agg = st.text_area(f"Other Metrics — Aggregate Objective '{agg}'", key=f"other_agg_{g}_{agg}")
+
+            obj_res_metrics[(g, agg, "AGGREGATE")] = {
+                "FTEs": fte_agg,
+                "Financial Resources": fin_agg,
+                "KPIs": kpi_agg,
+                "Other Metrics": other_agg,
+            }
+
+            # Metrics per expected result
+            for res in data.get("results", []):
+                st.markdown(f"### Expected Result: {res}")
+
+                fte = st.text_input(f"FTEs for '{res}'", key=f"fte_res_{g}_{agg}_{res}")
+                fin = st.text_input(f"Financial Resources for '{res}'", key=f"fin_res_{g}_{agg}_{res}")
+                kpi = st.text_area(f"KPIs for '{res}'", key=f"kpi_res_{g}_{agg}_{res}")
+                other = st.text_area(f"Other Metrics for '{res}'", key=f"other_res_{g}_{agg}_{res}")
+
+                obj_res_metrics[(g, agg, f"RES_{res}")] = {
+                    "FTEs": fte,
+                    "Financial Resources": fin,
+                    "KPIs": kpi,
+                    "Other Metrics": other,
+                }
 
     st.session_state.submission["Objective/Result Metrics"] = obj_res_metrics
 
     col1, col2 = st.columns(2)
     with col1:
-        st.button("Previous", on_click=prev_step, key="prev_7")
+        st.button("Previous", on_click=prev_step)
     with col2:
-        st.button("Next", on_click=next_step, key="next_7")
+        st.button("Next", on_click=next_step)
+
 
 # ----------------------------
 # STEP 7 — Additional Information
@@ -595,59 +700,43 @@ if st.session_state.step == 7:
 if st.session_state.step == 8:
     st.title("Step 8 — Upload Annexes & Export")
 
-    # Show previously saved annexes (if any)
-    if st.session_state.annex_saved_list:
-        st.write("Previously uploaded annexes (saved):")
-        for orig_name, saved_path in st.session_state.annex_saved_list:
-            st.write(f"- {orig_name} (saved at {saved_path})")
+    if "annexes_saved" not in st.session_state:
+        st.session_state.annexes_saved = False
 
-    # File uploader: when files are uploaded, immediately save them to ANNEX_DIR and record paths
-    uploaded = st.file_uploader("Upload annex files (multiple)", accept_multiple_files=True, key="annex_uploader")
-    if uploaded:
-        # Save all uploaded (immediately) and update session_state
-        saved_info = save_annexes_immediate(uploaded)
-        for name, path, ok, msg in saved_info:
-            if ok:
-                st.success(f"Saved annex: {name}")
-            else:
-                st.error(f"Failed to save annex {name}: {msg}")
+    uploaded = st.file_uploader("Upload annex files", accept_multiple_files=True)
 
-    # Always reflect saved annex filenames in submission
-    st.session_state.submission["Annexes_Saved"] = [p for (_, p) in st.session_state.annex_saved_list]
+    saved_files = []
+
+    if uploaded and not st.session_state.annexes_saved:
+        for f in uploaded:
+            new_name = datetime.now().strftime("%Y%m%d_%H%M%S_") + f.name
+            out_path = os.path.join(ANNEX_DIR, new_name)
+            with open(out_path, "wb") as out:
+                out.write(f.getbuffer())
+
+            saved_files.append(out_path)
+
+            # keep GitHub functionality
+            push_file_to_github(out_path, f"annexes/{new_name}")
+
+        st.session_state.submission["Annexes_Saved"] = saved_files
+        st.session_state.annexes_saved = True
+        st.success(f"Saved {len(saved_files)} annex(es).")
+
+    elif st.session_state.annexes_saved:
+        st.info("Annexes already saved. Upload again to replace.")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.button("Previous", on_click=prev_step, key="prev_9")
+        st.button("Previous", on_click=prev_step)
     with col2:
-        st.button("Finish and Generate Report", on_click=finish_and_save, key="finish")
+        st.button("Finish and Generate Report", on_click=finish_and_save)
 
-    # If finish_and_save has been run and produced a file, show it and allow download
     if st.session_state.get("last_file"):
-        try:
-            st.success("Word report generated.")
-            if st.session_state.get("finish_msg"):
-                st.info(st.session_state.get("finish_msg"))
-            last_path = st.session_state.last_file
-            with open(last_path, "rb") as f:
-                file_bytes = f.read()
-                st.download_button(
-                    label="Download Word Report",
-                    data=file_bytes,
-                    file_name=os.path.basename(last_path),
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    key="download_workplan"
-                )
-            # show GitHub push result for the generated report
-            pr = st.session_state.get("last_push_result", (None, None))
-            if pr and pr != (None, None):
-                ok, msg = pr
-                if ok:
-                    pass
-                    # st.info(f"Generated report push: {msg}")
-                else:
-                    st.warning(f"Generated report push: {msg}")
-        except FileNotFoundError:
-            st.error("Generated file not found on server (it may have been removed).")
-        except Exception as e:
-            st.error(f"Error preparing download: {e}")
-            st.error(traceback.format_exc())
+        with open(st.session_state.last_file, "rb") as f:
+            st.download_button(
+                label="Download Word Report",
+                data=f.read(),
+                file_name=os.path.basename(st.session_state.last_file)
+            )
+
