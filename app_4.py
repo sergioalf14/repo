@@ -802,128 +802,88 @@ if st.session_state.step == 7:
         st.button("Next", on_click=next_step, key="next_8")
 
 # ----------------------------
-# STEP 8 — Annex Upload + Export
+# STEP 8 — Upload Annexes & Export
 # ----------------------------
 if st.session_state.step == 8:
     st.title("Step 8 — Upload Annexes & Export")
 
-    # Ensure the annex list exists
+    # 1. Initialize lists if they don't exist
     if "annex_saved_list" not in st.session_state:
         st.session_state.annex_saved_list = []
-    
-    # Track the last uploader state to detect changes
-    if "last_uploader_state" not in st.session_state:
-        st.session_state.last_uploader_state = []
 
     # -------------------------------------------------------
-    # Show previously saved annexes
+    # 2. Display previously saved annexes (Read-Only View)
     # -------------------------------------------------------
     if st.session_state.annex_saved_list:
-        st.subheader("Previously uploaded annexes")
+        st.subheader("✅ Attached Annexes")
+        # Clean list display
         for item in st.session_state.annex_saved_list:
+            # item is tuple: (original_name, saved_path, hash, gh_path)
             if isinstance(item, (list, tuple)) and len(item) >= 2:
-                orig_name = item[0]
-                saved_path = item[1]
-                st.write(f"- **{orig_name}** (saved at `{saved_path}`)")
+                st.text(f"• {item[0]}")
+    else:
+        st.info("No annexes uploaded yet.")
+
+    st.write("---")
 
     # -------------------------------------------------------
-    # Callback function to process files ONLY when uploader changes
+    # 3. Simplified Callback
     # -------------------------------------------------------
-    def process_uploaded_files():
-        """Called only when file_uploader widget changes"""
-        uploaded_files = st.session_state.annex_uploader
-        
-        if not uploaded_files:
-            return
-        
-        # Get current file identifiers
-        current_files = [(f.name, f.size) for f in uploaded_files]
-        
-        # Check if this is actually a NEW upload (not just a rerun)
-        if current_files == st.session_state.last_uploader_state:
-            return  # Same files, skip processing
-        
-        # Update the state
-        st.session_state.last_uploader_state = current_files
-        
-        # Find truly new files
-        already_saved = {orig for (orig, *_) in st.session_state.annex_saved_list}
-        new_files = [f for f in uploaded_files if f.name not in already_saved]
-
-        if new_files:
-            saved_info = save_annexes_immediate(new_files)
-            # Store messages to display after rerun
-            st.session_state.upload_messages = []
-            for orig_name, saved_path, ok, msg in saved_info:
-                if ok:
-                    st.session_state.upload_messages.append(("success", f"Saved annex: {orig_name}"))
-                else:
-                    st.session_state.upload_messages.append(("error", f"Failed to save annex {orig_name}: {msg}"))
+    def on_upload_change():
+        """
+        Triggered ONLY when the user adds/removes a file.
+        We pass the whole list to the saver. The saver is smart enough 
+        to ignore files that are already saved (by hash/name).
+        """
+        files = st.session_state.annex_uploader
+        if files:
+            # This function (defined in your script) handles deduplication
+            save_annexes_immediate(files)
 
     # -------------------------------------------------------
-    # Upload annexes with on_change callback
+    # 4. The Uploader Widget
     # -------------------------------------------------------
-    uploaded_files = st.file_uploader(
-        "Upload annex files (you can select multiple)",
+    st.file_uploader(
+        "Upload new annexes",
         accept_multiple_files=True,
         key="annex_uploader",
-        on_change=process_uploaded_files  # Process ONLY when uploader changes
+        on_change=on_upload_change,  # <--- The magic fix: only runs on interaction
+        help="Files are saved automatically upon selection."
     )
-    
-    # Display any upload messages from the callback
-    if "upload_messages" in st.session_state:
-        for msg_type, msg in st.session_state.upload_messages:
-            if msg_type == "success":
-                st.success(msg)
-            else:
-                st.error(msg)
-        # Clear messages after displaying
-        del st.session_state.upload_messages
-
-    # Save full annex data into the submission object
-    annex_items = []
-    for item in st.session_state.annex_saved_list:
-        if isinstance(item, (list, tuple)) and len(item) >= 2:
-            orig = item[0]
-            path = item[1]
-            annex_items.append({"original_name": orig, "saved_path": path})
-
-    st.session_state.submission["Annexes_Saved"] = annex_items
 
     # -------------------------------------------------------
-    # Navigation buttons
+    # 5. Navigation & Finish
     # -------------------------------------------------------
+    st.write("---")
     col1, col2 = st.columns(2)
+    
     with col1:
         st.button("Previous", on_click=prev_step, key="prev_8")
+    
     with col2:
-        st.button("Finish and Generate Report", on_click=finish_and_save, key="finish_8")
+        # Finish button triggers the docx generation
+        st.button("Finish & Generate Report", on_click=finish_and_save, key="finish_8")
 
     # -------------------------------------------------------
-    # If report was generated, show download section
+    # 6. Success/Download Section (Shows after "Finish" is clicked)
     # -------------------------------------------------------
-    last_file = st.session_state.get("last_file")
-
-    if last_file:
+    if st.session_state.last_file:
+        st.divider()
+        st.success("✔ Workplan generated successfully!")
+        
+        # Display feedback message (e.g., GitHub push status)
+        if st.session_state.get("finish_msg"):
+            st.info(st.session_state.finish_msg)
+        
+        # Download Button
         try:
-            timestamp = st.session_state.get(
-                "generated_timestamp",
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            )
-            st.success(f"Word report generated on **{timestamp}**.")
-
-            finish_msg = st.session_state.get("finish_msg")
-            if finish_msg:
-                st.info(finish_msg)
-
-            with open(last_file, "rb") as f:
+            with open(st.session_state.last_file, "rb") as f:
                 st.download_button(
-                    label="📄 Download Word Report",
-                    data=f.read(),
-                    file_name=os.path.basename(last_file),
+                    label="📥 Download Word Document",
+                    data=f,
+                    file_name=os.path.basename(st.session_state.last_file),
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    key="download_workplan"
+                    key="dl_btn_step8"
                 )
-
         except Exception as e:
-            st.error(f"Error preparing download: {e}")
+            st.error(f"File generated but download failed: {e}")
