@@ -370,29 +370,52 @@ def export_word(data):
 # ------------------------------------------------
 def save_annexes_immediate(uploaded_files):
     """
-    Saves uploaded File-like objects to ANNEX_DIR immediately so they persist across steps.
-    Records saved file paths in st.session_state.annex_saved_list.
-    Returns list of tuples (orig_name, saved_path, success, message)
+    Saves uploaded files only once.
+    Prevents Streamlit reruns from duplicating annex saves.
     """
     saved = []
+
+    # Names already saved
+    already_saved = {orig for orig, _ in st.session_state.annex_saved_list}
+
     for f in uploaded_files:
         try:
+            # Skip if already saved
+            if f.name in already_saved:
+                saved.append((f.name, None, False, "Already saved earlier — skipped"))
+                continue
+
             safe_name = f.name
             out_path = os.path.join(ANNEX_DIR, safe_name)
-            # If same filename exists, append timestamp to avoid overwrite
+
+            # Prevent file overwrite on disk
             if os.path.exists(out_path):
                 base, ext = os.path.splitext(safe_name)
-                out_path = os.path.join(ANNEX_DIR, f"{base}_{int(datetime.now().timestamp())}{ext}")
+                out_path = os.path.join(
+                    ANNEX_DIR,
+                    f"{base}_{int(datetime.now().timestamp())}{ext}"
+                )
+
+            # Write file
             with open(out_path, "wb") as out:
                 out.write(f.getbuffer())
-            # record in session_state
+
+            # Register in session state
             st.session_state.annex_saved_list.append((f.name, out_path))
-            # Attempt push to GitHub annexes/ folder (best-effort)
-            success, msg = push_file_to_github(out_path, f"annexes/{os.path.basename(out_path)}")
-            saved.append((f.name, out_path, True, msg if success else f"Saved locally; GH: {msg}"))
+
+            # Push to GitHub (best effort)
+            success, msg = push_file_to_github(
+                out_path,
+                f"annexes/{os.path.basename(out_path)}"
+            )
+
+            saved.append((f.name, out_path, True, msg))
+
         except Exception as e:
             saved.append((f.name, None, False, f"Failed to save: {e}"))
+
     return saved
+
 
 # ------------------------------------------------
 # Finish callback: export docx + save master log + store filename for download
