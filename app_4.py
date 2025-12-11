@@ -237,96 +237,132 @@ def add_table_from_dict(doc, d):
 
 def export_word(data):
     """
-    Creates a fully formatted WTO-style Word document
-    AND preserves GitHub upload behaviour from app_4.py.
+    Creates a fully formatted WTO-style Word document, saves it to disk,
+    attempts to push to GitHub, and returns (filepath, filename, push_result_msg).
     """
-    doc = Document()
+    try:
+        doc = Document()
 
-    # TITLE PAGE
-    add_heading(doc, "Divisional Workplan Summary", level=1)
-    cover = data.get("Cover", {})
-    for k in ["Division", "Director", "Date", "Version", "FTEs", "Financial Resources", "Director Signature"]:
-        add_paragraph(doc, f"{k}: {cover.get(k, '')}")
+        # -----------------
+        # Build document (same as your current logic)
+        # -----------------
+        add_heading(doc, "Divisional Workplan Summary", level=1)
+        cover = data.get("Cover", {})
+        for k in ["Division", "Director", "Date", "Version", "FTEs", "Financial Resources", "Director Signature"]:
+            add_paragraph(doc, f"{k}: {cover.get(k, '')}")
 
-    doc.add_page_break()
+        doc.add_page_break()
 
-    # 1. Strategic Goals
-    add_heading(doc, "1. Strategic Goals")
-    add_bullet_list(doc, data.get("Selected Goals", []))
+        # 1. Strategic Goals
+        add_heading(doc, "1. Strategic Goals")
+        add_bullet_list(doc, data.get("Selected Goals", []))
 
-    # 2. Aggregate Objectives
-    add_heading(doc, "2. Aggregate Divisional Objectives")
-    for goal, objs in data.get("Aggregate Objectives", {}).items():
-        add_heading(doc, f"{goal}", level=2)
-        add_bullet_list(doc, objs)
+        # 2. Aggregate Objectives
+        add_heading(doc, "2. Aggregate Divisional Objectives")
+        for goal, objs in data.get("Aggregate Objectives", {}).items():
+            add_heading(doc, f"{goal}", level=2)
+            add_bullet_list(doc, objs)
 
-    # 3. Activities & Expected Results
-    add_heading(doc, "3. Activities and Expected Results")
-    for (goal, agg), content in data.get("Activities", {}).items():
-        add_heading(doc, f"{goal} — {agg}", level=2)
+        # 3. Activities & Expected Results
+        add_heading(doc, "3. Activities and Expected Results")
+        for (goal, agg), content in data.get("Activities", {}).items():
+            add_heading(doc, f"{goal} — {agg}", level=2)
 
-        if content.get("activities"):
-            add_paragraph(doc, "Activities:", bold=True)
-            add_bullet_list(doc, content["activities"])
+            if content.get("activities"):
+                add_paragraph(doc, "Activities:", bold=True)
+                add_bullet_list(doc, content["activities"])
 
-        if content.get("results"):
-            add_paragraph(doc, "Expected Results:", bold=True)
-            add_bullet_list(doc, content["results"])
+            if content.get("results"):
+                add_paragraph(doc, "Expected Results:", bold=True)
+                add_bullet_list(doc, content["results"])
 
-    # 4. Goal Metrics
-    add_heading(doc, "4. Metrics for Strategic Goals")
-    for goal, m in data.get("Goal Metrics", {}).items():
-        add_heading(doc, goal, level=2)
-        add_table_from_dict(doc, {
-            "FTEs": m.get("FTEs", ""),
-            "Financial Resources": m.get("Financial Resources", ""),
-            "KPIs": m.get("KPIs", ""),
-            "Other Metrics": m.get("Other Metrics", "")
-        })
+        # 4. Goal Metrics
+        add_heading(doc, "4. Metrics for Strategic Goals")
+        for goal, m in data.get("Goal Metrics", {}).items():
+            add_heading(doc, goal, level=2)
+            add_table_from_dict(doc, {
+                "FTEs": m.get("FTEs", ""),
+                "Financial Resources": m.get("Financial Resources", ""),
+                "KPIs": m.get("KPIs", ""),
+                "Other Metrics": m.get("Other Metrics", "")
+            })
 
-    # 5. Objective/Result Metrics
-    add_heading(doc, "5. Metrics for Objectives and Results")
-    for (goal, agg, tag), m in data.get("Objective/Result Metrics", {}).items():
-        if tag == "AGGREGATE":
-            title = f"{goal} — {agg}"
+        # 5. Objective/Result Metrics
+        add_heading(doc, "5. Metrics for Objectives and Results")
+        for (goal, agg, tag), m in data.get("Objective/Result Metrics", {}).items():
+            if tag == "AGGREGATE":
+                title = f"{goal} — {agg}"
+            else:
+                title = f"Expected Result: {tag[4:]}"
+            add_heading(doc, title, level=2)
+
+            add_table_from_dict(doc, {
+                "FTEs": m.get("FTEs", ""),
+                "Financial Resources": m.get("Financial Resources", ""),
+                "KPIs": m.get("KPIs", ""),
+                "Other Metrics": m.get("Other Metrics", "")
+            })
+
+        # 6. Additional Information
+        add_heading(doc, "6. Additional Information")
+        for k, v in data.get("Additional", {}).items():
+            add_paragraph(doc, k + ":", bold=True)
+            add_paragraph(doc, v if v else "—", indent=True)
+
+        # 7. Annexes
+        add_heading(doc, "7. Annexes")
+        annex_items = data.get("Annexes_Saved", [])
+        safe_names = []
+        for item in annex_items:
+            if isinstance(item, dict) and "original_name" in item:
+                safe_names.append(item["original_name"])
+            elif isinstance(item, str):
+                safe_names.append(os.path.basename(item))
+            else:
+                safe_names.append(str(item))
+
+        if safe_names:
+            add_bullet_list(doc, safe_names)
         else:
-            title = f"Expected Result: {tag[4:]}"
-        add_heading(doc, title, level=2)
+            add_paragraph(doc, "No annexes uploaded.")
 
-        add_table_from_dict(doc, {
-            "FTEs": m.get("FTEs", ""),
-            "Financial Resources": m.get("Financial Resources", ""),
-            "KPIs": m.get("KPIs", ""),
-            "Other Metrics": m.get("Other Metrics", "")
-        })
+        # -----------------
+        # Save file to disk
+        # -----------------
+        # Build filename: include division and timestamp to avoid collisions
+        div_part = (cover.get("Division") or "division").strip().replace(" ", "_")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"workplan_{div_part}_{timestamp}.docx"
+        filepath = os.path.join(LOCAL_DATA_DIR, filename)
 
-    # 6. Additional Information
-    add_heading(doc, "6. Additional Information")
-    for k, v in data.get("Additional", {}).items():
-        add_paragraph(doc, k + ":", bold=True)
-        add_paragraph(doc, v if v else "—", indent=True)
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
-    # 7. Annexes
-    add_heading(doc, "7. Annexes")
+        # Save the docx
+        doc.save(filepath)
 
-    annex_items = data.get("Annexes_Saved", [])
+        # -----------------
+        # Attempt to push to GitHub (best-effort)
+        # -----------------
+        push_msg = ""
+        try:
+            # Save to a folder on repo, e.g. workplans/
+            gh_path = f"workplans/{filename}"
+            success, push_msg = push_file_to_github(filepath, gh_path)
+            if not success:
+                push_msg = f"GitHub push failed: {push_msg}"
+            else:
+                push_msg = f"Pushed to GitHub: {gh_path}"
+        except Exception as e:
+            push_msg = f"Pushing to GitHub failed: {e}"
 
-    # Works whether each item is a dict or a path string
-    safe_names = []
-    for item in annex_items:
-        if isinstance(item, dict) and "original_name" in item:
-            safe_names.append(item["original_name"])
-        elif isinstance(item, str):
-            safe_names.append(os.path.basename(item))
-        else:
-            safe_names.append(str(item))
+        # Return values expected by finish_and_save()
+        return (filepath, filename, push_msg)
 
-    if safe_names:
-        add_bullet_list(doc, safe_names)
-    else:
-        add_paragraph(doc, "No annexes uploaded.")
-
-    
+    except Exception as e:
+        # If anything fails, return falsy filepath and useful error message
+        err = f"export_word failed: {e}\n{traceback.format_exc()}"
+        return (None, None, err)
 
 
 # ------------------------------------------------
