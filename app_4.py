@@ -805,93 +805,91 @@ if st.session_state.step == 7:
 # STEP 8 — Upload Annexes & Export
 # ----------------------------
 if st.session_state.step == 8:
-    st.title("Step 8 — Upload Annexes & Export")
+    st.title("Step 8 — Upload Annexes & Export")
 
-    # Initialize annex tracking like app_local.py
-    if "annexes_saved" not in st.session_state:
-        st.session_state.annexes_saved = False
-    if "annex_saved_list" not in st.session_state:
-        st.session_state.annex_saved_list = []
+    # Initialize annex tracking like app_local.py
+    if "annexes_saved" not in st.session_state:
+        st.session_state.annexes_saved = False
+    if "annex_saved_list" not in st.session_state:
+        st.session_state.annex_saved_list = []
 
-    uploaded_files = st.file_uploader(
-        "Upload annex files (PDF, Word, Excel, images, etc.)",
-        accept_multiple_files=True,
-        key="annex_uploads"
-    )
+    uploaded_files = st.file_uploader(
+        "Upload annex files (PDF, Word, Excel, images, etc.)",
+        accept_multiple_files=True,
+        key="annex_uploads"
+    )
 
-    os.makedirs(ANNEX_DIR, exist_ok=True)
-    saved_files = []
+    os.makedirs(ANNEX_DIR, exist_ok=True)
+    saved_files = []
 
-    # -------------------------------------------------------------
-    # SAVE ONLY ONCE — identical logic to app_local.py
-    # -------------------------------------------------------------
-    
-    
-    if uploaded_files and not st.session_state.annexes_saved:
+    # -------------------------------------------------------------
+    # SAVE ONLY ONCE — identical logic to app_local.py
+    # -------------------------------------------------------------
+    if uploaded_files and not st.session_state.annexes_saved:
 
-        for file in uploaded_files:
+        for file in uploaded_files:
 
-            # deterministic saved filename: timestamp + original filename
-            new_name = datetime.now().strftime("%Y%m%d_%H%M%S_") + file.name
-            save_path = os.path.join(ANNEX_DIR, new_name)
+            # deterministic saved filename: timestamp + original filename
+            new_name = datetime.now().strftime("%Y%m%d_%H%M%S_") + file.name
+            save_path = os.path.join(ANNEX_DIR, new_name)
 
-            with open(save_path, "wb") as f:
-                f.write(file.getbuffer())
+            with open(save_path, "wb") as f:
+                f.write(file.getbuffer())
 
-            # Save metadata for later use in export
-            saved_files.append({
-                "original_name": file.name,
-                "saved_name": new_name,
-                "path": save_path
-            })
+            # Save metadata for later use in export
+            saved_files.append({
+                "original_name": file.name,
+                "saved_name": new_name,
+                "path": save_path
+            })
 
-            # PUSH ONLY ONCE TO GITHUB
-            if USE_GITHUB and GITHUB_TOKEN:
-                gh_path = f"annexes/{new_name}"
-                push_file_to_github(save_path, gh_path)
+            # PUSH ONLY ONCE TO GITHUB
+            if USE_GITHUB and GITHUB_TOKEN:
+                gh_path = f"annexes/{new_name}"
+                push_file_to_github(save_path, gh_path)
 
-        st.session_state.annex_saved_list = saved_files
-        st.session_state.submission["Annexes_Saved"] = saved_files
-        st.session_state.annexes_saved = True  # <--- prevents duplicates
+        st.session_state.annex_saved_list = saved_files
+        st.session_state.submission["Annexes_Saved"] = saved_files
+        st.session_state.annexes_saved = True  # <--- prevents duplicates
 
-        st.success(f"Saved {len(saved_files)} annex(es).")
+        st.success(f"Saved {len(saved_files)} annex(es).")
 
-    elif st.session_state.annexes_saved:
-        st.info("Annexes already saved. Upload again to replace them.")
+    elif st.session_state.annexes_saved:
+        st.info("Annexes already saved. Upload again to replace them.")
 
-    # -------------------------------------------------------
-    # Show list of annexes already saved
-    # -------------------------------------------------------
-    if st.session_state.annex_saved_list:
-        st.subheader("Attached Annexes:")
-        for a in st.session_state.annex_saved_list:
-            st.write(f"• {a['original_name']}")
+    # -------------------------------------------------------
+    # Show list of annexes already saved
+    # -------------------------------------------------------
+    if st.session_state.annex_saved_list:
+        st.subheader("Attached Annexes:")
+        for a in st.session_state.annex_saved_list:
+            st.write(f"• {a['original_name']}")
 
-    st.write("---")
+    st.write("---")
 
-    # Navigation & Finish
-    col1, col2 = st.columns(2)
+    # Navigation & Finish
+    col1, col2 = st.columns(2)
 
-    with col1:
-        st.button("Previous", on_click=prev_step, key="prev_8")
+    with col1:
+        st.button("Previous", on_click=prev_step, key="prev_8")
 
-    with col2:
-        st.button("Finish & Generate Report", on_click=finish_and_save, key="finish_8")
+    with col2:
+        st.button("Finish & Generate Report", on_click=finish_and_save, key="finish_8")
 
-    # -------------------------------------------------------
-    # Download generated report
-    # -------------------------------------------------------
-    if st.session_state.last_file:
-        st.success(" Workplan generated successfully!")
+    # -------------------------------------------------------
+    # Download generated report
+    # -------------------------------------------------------
+    if st.session_state.last_file:
+        st.success("✔ Workplan generated successfully!")
 
-        try:
-            with open(st.session_state.last_file, "rb") as f:
-                st.download_button(
-                    label=" Download Word Document",
-                    data=f,
-                    file_name=os.path.basename(st.session_state.last_file),
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    key="dl_btn_step8"
-                )
-        except Exception as e:
-            st.error(f"File generated but download failed: {e}")
+        try:
+            with open(st.session_state.last_file, "rb") as f:
+                st.download_button(
+                    label="📥 Download Word Document",
+                    data=f,
+                    file_name=os.path.basename(st.session_state.last_file),
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    key="dl_btn_step8"
+                )
+        except Exception as e:
+            st.error(f"File generated but download failed: {e}")
