@@ -825,34 +825,19 @@ if st.session_state.step == 8:
     # -------------------------------------------------------------
     # SAVE ONLY ONCE — identical logic to app_local.py
     # -------------------------------------------------------------
+
     if uploaded_files and not st.session_state.annexes_saved:
+    saved_results = save_annexes_immediate(uploaded_files)
 
-        for file in uploaded_files:
+    # store for export
+    st.session_state.submission["Annexes_Saved"] = [
+        {"original_name": name, "saved_path": path} 
+        for (name, path, ok, msg) in saved_results if ok
+    ]
 
-            # deterministic saved filename: timestamp + original filename
-            new_name = datetime.now().strftime("%Y%m%d_%H%M%S_") + file.name
-            save_path = os.path.join(ANNEX_DIR, new_name)
+    st.session_state.annexes_saved = True
 
-            with open(save_path, "wb") as f:
-                f.write(file.getbuffer())
-
-            # Save metadata for later use in export
-            saved_files.append({
-                "original_name": file.name,
-                "saved_name": new_name,
-                "path": save_path
-            })
-
-            # PUSH ONLY ONCE TO GITHUB
-            if USE_GITHUB and GITHUB_TOKEN:
-                gh_path = f"annexes/{new_name}"
-                push_file_to_github(save_path, gh_path)
-
-        st.session_state.annex_saved_list = saved_files
-        st.session_state.submission["Annexes_Saved"] = saved_files
-        st.session_state.annexes_saved = True  # <--- prevents duplicates
-
-        st.success(f"Saved {len(saved_files)} annex(es).")
+    st.success(f"Saved {len(saved_results)} annex(es).")
 
     elif st.session_state.annexes_saved:
         st.info("Annexes already saved. Upload again to replace them.")
