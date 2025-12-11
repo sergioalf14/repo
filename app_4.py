@@ -810,14 +810,21 @@ if st.session_state.step == 8:
     # Ensure the annex list exists
     if "annex_saved_list" not in st.session_state:
         st.session_state.annex_saved_list = []
+    
+    # Track which files have been processed to avoid duplicates on rerun
+    if "processed_annex_files" not in st.session_state:
+        st.session_state.processed_annex_files = set()
 
     # -------------------------------------------------------
     # Show previously saved annexes
-    --------------------------------------------------------
+    # -------------------------------------------------------
     if st.session_state.annex_saved_list:
         st.subheader("Previously uploaded annexes")
-        for orig_name, saved_path in st.session_state.annex_saved_list:
-            st.write(f"- **{orig_name}** (saved at `{saved_path}`)")
+        for item in st.session_state.annex_saved_list:
+            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                orig_name = item[0]
+                saved_path = item[1]
+                st.write(f"- **{orig_name}** (saved at `{saved_path}`)")
 
     # -------------------------------------------------------
     # Upload annexes WITHOUT saving duplicates
@@ -829,9 +836,16 @@ if st.session_state.step == 8:
     )
 
     if uploaded_files:
-        # Identify files never saved before
-        already_saved = {orig for (orig, _) in st.session_state.annex_saved_list}
-        new_files = [f for f in uploaded_files if f.name not in already_saved]
+        # Create a unique identifier for each uploaded file (name + size)
+        current_files = {(f.name, f.size) for f in uploaded_files}
+        
+        # Find truly new files that haven't been processed yet
+        new_files = []
+        for f in uploaded_files:
+            file_id = (f.name, f.size)
+            if file_id not in st.session_state.processed_annex_files:
+                new_files.append(f)
+                st.session_state.processed_annex_files.add(file_id)
 
         if new_files:
             saved_info = save_annexes_immediate(new_files)
@@ -842,15 +856,12 @@ if st.session_state.step == 8:
                     st.error(f"Failed to save annex {orig_name}: {msg}")
 
     # Save full annex data into the submission object
-    # support both formats: (orig, path) or (orig, path, hash, gh)
     annex_items = []
     for item in st.session_state.annex_saved_list:
         if isinstance(item, (list, tuple)) and len(item) >= 2:
             orig = item[0]
             path = item[1]
-        else:
-            continue
-        annex_items.append({"original_name": orig, "saved_path": path})
+            annex_items.append({"original_name": orig, "saved_path": path})
 
     st.session_state.submission["Annexes_Saved"] = annex_items
 
@@ -894,5 +905,3 @@ if st.session_state.step == 8:
 
         except Exception as e:
             st.error(f"Error preparing download: {e}")
-
-
