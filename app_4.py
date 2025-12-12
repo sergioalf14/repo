@@ -375,86 +375,67 @@ def _hash_bytes(b: bytes) -> str:
     h.update(b)
     return h.hexdigest()
 
+# Save annexes without placeholders or duplicates
+# --------------------------------------------------
 def save_annexes_immediate(uploaded_files):
-    """
-    Save uploaded files only once by content-hash.
-    Keeps st.session_state.annex_saved_list as list of tuples (original_name, saved_path, hash, gh_path)
-    Returns list of tuples (orig_name, saved_path, success, message)
-    """
-    # init session state stores if missing
-    if "annex_saved_list" not in st.session_state:
-        st.session_state.annex_saved_list = []
-    if "annex_saved_hashes" not in st.session_state:
-        st.session_state.annex_saved_hashes = set()
-    if "annex_saved_gh_paths" not in st.session_state:
-        st.session_state.annex_saved_gh_paths = set()
+    if "annex_saved_list" not in st.session_state:
+        st.session_state.annex_saved_list = []
+    if "annex_saved_hashes" not in st.session_state:
+        st.session_state.annex_saved_hashes = set()
+    if "annex_saved_gh_paths" not in st.session_state:
+        st.session_state.annex_saved_gh_paths = set()
 
-    saved_results = []
+    saved_results = []
 
-    # Build lookup of existing original names to prevent filename duplicates
-    existing_names = {orig for (orig, *_) in st.session_state.annex_saved_list}
+    # Set of previously saved original names
+    existing_names = {orig for (orig, *_ ) in st.session_state.annex_saved_list}
 
-    for f in uploaded_files:
-        try:
-            # Skip if this exact filename was already saved
-            if f.name in existing_names:
-                saved_results.append((f.name, None, True, "Already saved — skipped"))
-                continue
+    for f in uploaded_files:
+        try:
+            # Skip if filename already saved
+            if f.name in existing_names:
+                saved_results.append((f.name, None, True, "Already saved — skipped"))
+                continue
 
-            # read bytes once
-            b = f.getbuffer().tobytes() if hasattr(f, "getbuffer") else f.read()
+            # Load content
+            b = f.getbuffer().tobytes() if hasattr(f, "getbuffer") else f.read()
 
-            # compute content hash
-            content_hash = _hash_bytes(b)
+            # Hash for duplicate detection
+            content_hash = _hash_bytes(b)
 
-            # Skip if we already saved identical content
-            if content_hash in st.session_state.annex_saved_hashes:
-                saved_results.append((f.name, None, True, "Already saved (identical content) — skipped"))
-                continue
+            if content_hash in st.session_state.annex_saved_hashes:
+                saved_results.append((f.name, None, True, "Already saved (identical content) — skipped"))
+                continue
 
-            # Use original filename
-            safe_name = f.name
-            out_path = os.path.join(ANNEX_DIR, safe_name)
+            # Build save path
+            out_path = os.path.join(ANNEX_DIR, f.name)
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
-            # ensure directory exists
-            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            # Write file ONCE
+            with open(out_path, "wb") as out:
+                out.write(b)
 
-            # Reserve the filename IMMEDIATELY to avoid repeated save during reruns
-            existing_names.add(f.name)
-            st.session_state.annex_saved_list.append((f.name, None, None, None)) 
-            
-            # write bytes to disk
-            with open(out_path, "wb") as out:
-                out.write(b)
+            # Push to GitHub only once per file
+            gh_path = f"annexes/{f.name}"
+            if USE_GITHUB and GITHUB_TOKEN and gh_path not in st.session_state.annex_saved_gh_paths:
+                success, msg = push_file_to_github(out_path, gh_path)
+                gh_msg = "Pushed to GitHub" if success else f"GitHub push failed: {msg}"
+                if success:
+                    st.session_state.annex_saved_gh_paths.add(gh_path)
+            else:
+                gh_msg = "Saved locally (GitHub skipped)."
 
-            # push to GitHub only once
-            gh_msg = ""
-            gh_path = f"annexes/{os.path.basename(out_path)}"
-            
-            if USE_GITHUB and GITHUB_TOKEN and (gh_path not in st.session_state.annex_saved_gh_paths):
-                try:
-                    success, push_msg = push_file_to_github(out_path, gh_path)
-                    if success:
-                        gh_msg = f"Pushed to GitHub: {gh_path}"
-                        st.session_state.annex_saved_gh_paths.add(gh_path)
-                    else:
-                        gh_msg = f"Saved locally; GitHub push: {push_msg}"
-                except Exception as e:
-                    gh_msg = f"Saved locally; GitHub push error: {e}"
-            else:
-                gh_msg = "Saved locally (GH push skipped or already done)."
+            # Record FINAL entry only once
+            st.session_state.annex_saved_list.append((f.name, out_path, content_hash, gh_path))
+            st.session_state.annex_saved_hashes.add(content_hash)
 
-            # record in session_state
-            # Update last placeholder entry
-            st.session_state.annex_saved_list[-1] = (f.name, out_path, content_hash, gh_path)            
-            st.session_state.annex_saved_hashes.add(content_hash)
+            saved_results.append((f.name, out_path, True, gh_msg))
 
-            saved_results.append((f.name, out_path, True, gh_msg))
+        except Exception as e:
+            saved_results.append((f.name, None, False, f"Failed to save: {e}"))
 
-        except Exception as e:
-            saved_results.append((f.name, None, False, f"Failed to save: {e}"))
+    return saved_results
 
-    return saved_results
 
 # ------------------------------------------------
 # Finish callback: export docx + save master log + store filename for download
