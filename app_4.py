@@ -419,7 +419,11 @@ def save_annexes_immediate(uploaded_files):
             # ensure directory exists
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
-            # write bytes to disk
+            # Reserve the filename IMMEDIATELY to avoid repeated save during reruns
+            existing_names.add(f.name)
+            st.session_state.annex_saved_list.append((f.name, None, None, None)) 
+            
+            # write bytes to disk
             with open(out_path, "wb") as out:
                 out.write(b)
 
@@ -441,7 +445,8 @@ def save_annexes_immediate(uploaded_files):
                 gh_msg = "Saved locally (GH push skipped or already done)."
 
             # record in session_state
-            st.session_state.annex_saved_list.append((f.name, out_path, content_hash, gh_path))
+            # Update last placeholder entry
+            st.session_state.annex_saved_list[-1] = (f.name, out_path, content_hash, gh_path)            
             st.session_state.annex_saved_hashes.add(content_hash)
 
             saved_results.append((f.name, out_path, True, gh_msg))
