@@ -455,46 +455,53 @@ def save_annexes_immediate(uploaded_files):
 # Finish callback: export docx + save master log + store filename for download
 # ------------------------------------------------
 def finish_and_save():
-    try:
-        # Ensure annexes stored
-        st.session_state.submission["Annexes_Saved"] = [
-            p for (_, p) in st.session_state.annex_saved_list
-        ]
 
-        # Generate the Word report
-        filepath, filename, push_result = export_word(st.session_state.submission)
+    # Prevent duplicate execution
+    if st.session_state.get("finish_ran", False):
+        return
 
-        if not filepath:
-            st.session_state.last_file = None
-            st.session_state.finish_msg = f"Failed to generate Word doc: {push_result}"
-            return
+    try:
+        # Correct annex saving
+        st.session_state.submission["Annexes_Saved"] = [
+            item["path"] for item in st.session_state.annex_saved_list
+        ]
 
-        # IMPORTANT: store timestamp for Step 8
-        st.session_state.generated_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Prevent repeated Word export
+        if "word_generated" not in st.session_state:
+            filepath, filename, push_result = export_word(st.session_state.submission)
+            st.session_state.word_generated = True
+        else:
+            filepath = st.session_state.last_file
+            push_result = st.session_state.last_push_result
 
-        # Save to master log
-        save_ok, save_msg = save_to_master_excel({
-            "timestamp": datetime.now(),
-            "division": st.session_state.submission.get("Cover", {}).get("Division", ""),
-            "goals": ", ".join(st.session_state.submission.get("Selected Goals", [])),
-            "data": str(st.session_state.submission)
-        })
+        if not filepath:
+            st.session_state.last_file = None
+            st.session_state.finish_msg = f"Failed to generate Word doc: {push_result}"
+            return
 
-        # Store the generated file path
-        st.session_state.last_file = filepath
+        st.session_state.generated_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Determine finish message
-        if save_ok:
-            st.session_state.finish_msg = save_msg or "Report generated successfully."
-        else:
-            st.session_state.finish_msg = save_msg or "Report generated, but master log save failed."
+        save_ok, save_msg = save_to_master_excel({
+            "timestamp": datetime.now(),
+            "division": st.session_state.submission.get("Cover", {}).get("Division", ""),
+            "goals": ", ".join(st.session_state.submission.get("Selected Goals", [])),
+            "data": str(st.session_state.submission)
+        })
 
-        # Store push result
-        st.session_state.last_push_result = push_result
+        st.session_state.last_file = filepath
+        st.session_state.last_push_result = push_result
 
-    except Exception as e:
-        st.session_state.last_file = None
-        st.session_state.finish_msg = f"Unexpected error: {e}\n{traceback.format_exc()}"
+        if save_ok:
+            st.session_state.finish_msg = save_msg or "Report generated successfully."
+        else:
+            st.session_state.finish_msg = save_msg or "Report generated, but master log save failed."
+
+    except Exception as e:
+        st.session_state.last_file = None
+        st.session_state.finish_msg = f"Unexpected error: {e}\n{traceback.format_exc()}"
+
+    # Mark finish as completed
+    st.session_state.finish_ran = True
 
 
 # ------------------------------------------------
