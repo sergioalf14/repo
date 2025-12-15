@@ -26,7 +26,7 @@ USE_GITHUB = True   # Keep Github syncing enabled (Option A)
 # SAFE DATA DIRECTORY INITIALIZATION
 # ------------------------------------------------
 try:
-    os.makedirs(DATA_DIR_CANDIDATE, exist_ok=True)
+    os.makedirs(DATA_DIR_CANDIDATE, exist_ok=True)
     LOCAL_DATA_DIR = DATA_DIR_CANDIDATE
 except Exception:
     LOCAL_DATA_DIR = tempfile.gettempdir()
