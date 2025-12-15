@@ -20,7 +20,7 @@ DATA_DIR_CANDIDATE = "/mount/data/workplan_data"
 # GitHub defaults (you provided repo)
 DEFAULT_GITHUB_REPO = "sergioalf14/repo"
 
-USE_GITHUB = True   # Keep GitHub syncing enabled (Option A)
+USE_GITHUB = True   # Keep Github syncing enabled (Option A)
 
 # ------------------------------------------------
 # SAFE DATA DIRECTORY INITIALIZATION
